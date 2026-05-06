@@ -1,0 +1,589 @@
+// ─── CGIF — Prisma Schema ────────────────────────────────────────────────────
+// Cameroon Global Intelligence Forum
+// Version : 1.0.0
+// ─────────────────────────────────────────────────────────────────────────────
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["omitApi"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ENUMS
+// ══════════════════════════════════════════════════════════════════════════════
+
+enum Role {
+  MEMBER
+  MODERATOR
+  ADMIN
+}
+
+enum UserStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+  BANNED
+}
+
+enum KycStatus {
+  NONE
+  PENDING
+  REVIEWING
+  APPROVED
+  REJECTED
+}
+
+enum ProjectStatus {
+  PENDING
+  REVIEW
+  VOTING
+  FUNDING
+  FUNDED
+  DONE
+  REJECTED
+}
+
+enum InvestmentStatus {
+  VOEU_SOUMIS
+  COORDOS_ENVOYEES
+  VIREMENT_RECU
+  ACTIVE
+  CANCELLED
+}
+
+enum PaymentMethod {
+  VIREMENT_SEPA
+  VIREMENT_SWIFT
+  ORANGE_MONEY
+  MTN_MOMO
+  WAVE
+}
+
+enum PostSection {
+  DISCUSSION
+  PROJET
+  FINANCEMENT
+  SONDAGE
+}
+
+enum PostStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum DocStatus {
+  UPLOADED
+  CLASSIFIED
+  ARCHIVED
+}
+
+enum NdaStatus {
+  PENDING
+  SIGNED
+  EXPIRED
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// MODELES
+// ══════════════════════════════════════════════════════════════════════════════
+
+model User {
+  id             String     @id @default(cuid())
+  email          String     @unique
+  passwordHash   String
+  name           String
+  initials       String
+  role           Role       @default(MEMBER)
+  status         UserStatus @default(PENDING)
+  kycStatus      KycStatus  @default(NONE)
+
+  bio            String?
+  country        String
+  city           String?
+  phone          String?
+  domain         String?
+  specialization String?
+  linkedinUrl    String?
+  avatarUrl      String?
+
+  clusterId      String?
+  cluster        Cluster?   @relation(fields: [clusterId], references: [id])
+
+  lastLoginAt    DateTime?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  kycRecord                KycRecord?
+  ndaRecord                NdaRecord?
+  investments              Investment[]
+  certificates             Certificate[]
+  posts                    Post[]
+  comments                 Comment[]
+  sentMessages             Message[]     @relation("SentMessages")
+  receivedMessages         Message[]     @relation("ReceivedMessages")
+  notifications            Notification[]
+  votes                    Vote[]
+  pollVotes                PollVote[]
+  eventRegistrations       EventRegistration[]
+  alertConfigs             AlertConfig[]
+  parrainagesDonnes        Parrainage[]  @relation("Parrains")
+  parrainagesRecus         Parrainage[]  @relation("Filleuls")
+  refreshTokens            RefreshToken[]
+  auditLogs                AuditLog[]    @relation("AuditActor")
+  kycReviewed              KycRecord[]   @relation("KycReviewer")
+  projectsSubmitted        Project[]     @relation("ProjectSubmitter")
+  projectsAnalysed         Project[]     @relation("ProjectAnalyst")
+  investmentsConfirmed     Investment[]  @relation("InvestmentConfirmer")
+  pollsCreated             Poll[]
+  announcementsAuthored    Announcement[]
+  eventsOrganised          Event[]
+  documents                Document[]    @relation("DocumentAuthor")
+
+  @@index([clusterId])
+  @@index([status])
+  @@index([role])
+  @@index([kycStatus])
+}
+
+model Cluster {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  code      String?
+  domain    String?
+  color     String?
+  iconType  String?
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  members    User[]
+  projects   Project[]
+  posts      Post[]
+  events     Event[]
+  ndaRecords NdaRecord[]
+
+  @@index([active])
+}
+
+model Project {
+  id              String        @id @default(cuid())
+  title           String
+  description     String?
+  status          ProjectStatus @default(PENDING)
+  targetAmount    Float
+  sharePrice      Float         @default(5000)
+  collectedAmount Float         @default(0)
+  progress        Int           @default(0)
+  fundingDeadline DateTime?
+  category        String?
+  location        String?
+  returnRate      Float?
+  duration        String?
+  risks           String?
+
+  clusterId    String
+  cluster      Cluster  @relation(fields: [clusterId], references: [id])
+  submitterId  String
+  submitter    User     @relation("ProjectSubmitter", fields: [submitterId], references: [id])
+  analystId    String?
+  analyst      User?    @relation("ProjectAnalyst", fields: [analystId], references: [id])
+
+  investments  Investment[]
+  documents    Document[]
+  certificates Certificate[]
+  posts        Post[]
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([clusterId])
+  @@index([status])
+  @@index([submitterId])
+}
+
+model Investment {
+  id            String           @id @default(cuid())
+  memberId      String
+  member        User             @relation(fields: [memberId], references: [id])
+  projectId     String
+  project       Project          @relation(fields: [projectId], references: [id])
+
+  amount        Float
+  sharePrice    Float            @default(5000)
+  sharesCount   Int
+  paymentMethod PaymentMethod
+  status        InvestmentStatus @default(VOEU_SOUMIS)
+  refVirement   String           @unique
+
+  memberNom         String?
+  memberPrenom      String?
+  memberDob         DateTime?
+  memberNationality String?
+  memberAddress     String?
+  memberIdDoc       String?
+
+  bankName      String?
+  bankIban      String?
+  bankHolder    String?
+
+  adminNotes    String?
+  confirmedBy   String?
+  confirmer     User?    @relation("InvestmentConfirmer", fields: [confirmedBy], references: [id])
+
+  submittedAt    DateTime  @default(now())
+  bankInfoSentAt DateTime?
+  confirmedAt    DateTime?
+  activatedAt    DateTime?
+
+  dividends     Dividend[]
+  certificates  Certificate[]
+
+  @@index([memberId])
+  @@index([projectId])
+  @@index([status])
+}
+
+model KycRecord {
+  id              String    @id @default(cuid())
+  memberId        String    @unique
+  member          User      @relation(fields: [memberId], references: [id])
+
+  status          KycStatus @default(PENDING)
+
+  nom             String?
+  prenom          String?
+  dateNaissance   String?
+  nationalite     String?
+  adresse         String?
+  docType         String?
+  docUrl          String?
+
+  proofType       String?
+  proofUrl        String?
+
+  adminNotes      String?
+  rejectionReason String?
+  reviewedById    String?
+  reviewer        User?     @relation("KycReviewer", fields: [reviewedById], references: [id])
+  reviewedAt      DateTime?
+  submittedAt     DateTime  @default(now())
+
+  @@index([status])
+}
+
+model Certificate {
+  id           String     @id @default(cuid())
+  ref          String     @unique
+  type         String
+  valid        Boolean    @default(true)
+
+  memberId     String
+  member       User       @relation(fields: [memberId], references: [id])
+  investmentId String?
+  investment   Investment? @relation(fields: [investmentId], references: [id])
+  projectId    String?
+  project      Project?   @relation(fields: [projectId], references: [id])
+
+  issuedAt     DateTime   @default(now())
+
+  @@index([memberId])
+}
+
+model Dividend {
+  id            String     @id @default(cuid())
+  investmentId  String
+  investment    Investment @relation(fields: [investmentId], references: [id])
+  amount        Float
+  type          String
+  period        String
+  status        String     @default("pending")
+  distributedAt DateTime?
+  createdAt     DateTime   @default(now())
+
+  @@index([investmentId])
+}
+
+model NdaRecord {
+  id        String    @id @default(cuid())
+  memberId  String    @unique
+  member    User      @relation(fields: [memberId], references: [id])
+  clusterId String?
+  cluster   Cluster?  @relation(fields: [clusterId], references: [id])
+  version   String    @default("1.0")
+  status    NdaStatus @default(PENDING)
+  signedAt  DateTime?
+  expiresAt DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([status])
+}
+
+model Post {
+  id          String      @id @default(cuid())
+  title       String
+  body        String
+  section     PostSection
+  status      PostStatus  @default(PENDING)
+  aiScore     Float?
+  aiTags      String[]
+  pollOptions String[]
+
+  authorId    String
+  author      User        @relation(fields: [authorId], references: [id])
+  clusterId   String?
+  cluster     Cluster?    @relation(fields: [clusterId], references: [id])
+  projectId   String?
+  project     Project?    @relation(fields: [projectId], references: [id])
+
+  comments    Comment[]
+  pollVotes   PollVote[]
+
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  @@index([authorId])
+  @@index([clusterId])
+  @@index([status])
+  @@index([section])
+}
+
+model Comment {
+  id        String   @id @default(cuid())
+  body      String
+  authorId  String
+  author    User     @relation(fields: [authorId], references: [id])
+  postId    String
+  post      Post     @relation(fields: [postId], references: [id])
+  createdAt DateTime @default(now())
+
+  @@index([postId])
+  @@index([authorId])
+}
+
+model PollVote {
+  id          String   @id @default(cuid())
+  postId      String
+  post        Post     @relation(fields: [postId], references: [id])
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  optionIndex Int
+  createdAt   DateTime @default(now())
+
+  @@unique([postId, userId])
+}
+
+model Poll {
+  id        String    @id @default(cuid())
+  title     String
+  question  String
+  options   String[]
+  scope     String    @default("all")
+  status    String    @default("open")
+  creatorId String
+  creator   User      @relation(fields: [creatorId], references: [id])
+  closesAt  DateTime?
+  createdAt DateTime  @default(now())
+
+  votes     Vote[]
+
+  @@index([status])
+}
+
+model Vote {
+  id          String   @id @default(cuid())
+  pollId      String
+  poll        Poll     @relation(fields: [pollId], references: [id])
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  optionIndex Int
+  createdAt   DateTime @default(now())
+
+  @@unique([pollId, userId])
+}
+
+model Document {
+  id         String    @id @default(cuid())
+  name       String
+  type       String
+  storageUrl String
+  status     DocStatus @default(UPLOADED)
+  aiConf     Float?
+  aiSummary  String?
+  aiTag      String?
+
+  authorId   String
+  author     User      @relation("DocumentAuthor", fields: [authorId], references: [id])
+  projectId  String?
+  project    Project?  @relation(fields: [projectId], references: [id])
+
+  createdAt  DateTime  @default(now())
+
+  @@index([authorId])
+  @@index([projectId])
+  @@index([status])
+}
+
+model Message {
+  id         String    @id @default(cuid())
+  subject    String
+  body       String
+  senderId   String
+  sender     User      @relation("SentMessages", fields: [senderId], references: [id])
+  receiverId String
+  receiver   User      @relation("ReceivedMessages", fields: [receiverId], references: [id])
+  read       Boolean   @default(false)
+  readAt     DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([receiverId])
+  @@index([senderId])
+}
+
+model Notification {
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id])
+  type       String
+  icon       String?
+  title      String
+  message    String
+  read       Boolean   @default(false)
+  readAt     DateTime?
+  entityType String?
+  entityId   String?
+  createdAt  DateTime  @default(now())
+
+  @@index([userId])
+  @@index([read])
+}
+
+model Announcement {
+  id        String   @id @default(cuid())
+  title     String
+  body      String
+  scope     String   @default("all")
+  priority  String   @default("normal")
+  status    String   @default("draft")
+  authorId  String
+  author    User     @relation(fields: [authorId], references: [id])
+  createdAt DateTime @default(now())
+
+  @@index([status])
+}
+
+model Event {
+  id              String   @id @default(cuid())
+  titre           String
+  type            String
+  scope           String   @default("all")
+  description     String?
+  location        String?
+  meetingUrl      String?
+  eventDate       DateTime
+  maxParticipants Int?
+  featured        Boolean  @default(false)
+  statut          String   @default("scheduled")
+
+  clusterId      String?
+  cluster        Cluster? @relation(fields: [clusterId], references: [id])
+  organisateurId String
+  organisateur   User     @relation(fields: [organisateurId], references: [id])
+
+  registrations  EventRegistration[]
+
+  createdAt      DateTime @default(now())
+
+  @@index([eventDate])
+  @@index([clusterId])
+}
+
+model EventRegistration {
+  id        String   @id @default(cuid())
+  eventId   String
+  event     Event    @relation(fields: [eventId], references: [id])
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  createdAt DateTime @default(now())
+
+  @@unique([eventId, userId])
+}
+
+model NewsArticle {
+  id          String   @id @default(cuid())
+  titre       String
+  source      String
+  url         String?
+  cluster     String?
+  domaine     String?
+  tags        String[]
+  scoreIA     Float?
+  resume      String?
+  vues        Int      @default(0)
+  likes       Int      @default(0)
+  publishedAt DateTime @default(now())
+
+  @@index([cluster])
+  @@index([domaine])
+  @@index([publishedAt])
+}
+
+model AlertConfig {
+  id       String   @id @default(cuid())
+  userId   String
+  user     User     @relation(fields: [userId], references: [id])
+  type     String
+  active   Boolean  @default(true)
+  channels String[]
+
+  @@unique([userId, type])
+}
+
+model Parrainage {
+  id        String   @id @default(cuid())
+  parrainId String
+  parrain   User     @relation("Parrains", fields: [parrainId], references: [id])
+  filleulId String
+  filleul   User     @relation("Filleuls", fields: [filleulId], references: [id])
+  code      String   @unique
+  status    String   @default("pending")
+  points    Int      @default(150)
+  createdAt DateTime @default(now())
+
+  @@index([parrainId])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  action    String
+  actorId   String?
+  actor     User?    @relation("AuditActor", fields: [actorId], references: [id])
+  actorRole String?
+  target    String?
+  detail    String?
+  type      String
+  severity  String   @default("info")
+  entityId  String?
+  createdAt DateTime @default(now())
+
+  @@index([actorId])
+  @@index([type])
+  @@index([severity])
+  @@index([createdAt])
+}
+
+model RefreshToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
